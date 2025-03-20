@@ -6,3 +6,47 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+/* AI OCR Modal styling */
+.ai-ocr-modal {
+  padding: 20px;
+}
+
+.ai-ocr-modal h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.ai-ocr-modal input[type="text"] {
+  width: 100%;
+  margin-bottom: 15px;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.ai-ocr-modal input[type="file"] {
+  margin: 10px 0;
+  display: block;
+}
+
+.ai-ocr-modal .button-container {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.ai-ocr-modal button {
+  min-width: 100px;
+}
+
+/* Settings tab styling */
+.ai-ocr-settings .setting-item {
+  margin-bottom: 16px;
+}
+
+.ai-ocr-settings .api-key-warning {
+  color: var(--text-error);
+  margin-top: 5px;
+  font-size: 12px;
+}
