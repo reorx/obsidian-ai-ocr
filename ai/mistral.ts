@@ -1,4 +1,5 @@
 import { Mistral } from "@mistralai/mistralai";
+import { OCRResponse } from "@mistralai/mistralai/models/components";
 
 import {
 	InitOCRClient,
@@ -45,6 +46,8 @@ export class MistralOCRClient implements OCRClient {
      */
     async processFile(filePath: string, fileData: Blob): Promise<OCRResult> {
         const fileName = filePath.split('/').pop() || 'file';
+        const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(fileExtension);
 
         try {
             // Convert Blob to ArrayBuffer
@@ -82,14 +85,14 @@ export class MistralOCRClient implements OCRClient {
             }
 
             // Process with OCR
-            let ocrResponse;
+            let ocrResponse: OCRResponse;
             try {
                 ocrResponse = await this.client.ocr.process({
                     model: "mistral-ocr-latest",
-                    document: {
-                        type: "image_url",
-                        imageUrl: signedUrl.url,
-                    }
+					includeImageBase64: true,
+                    document: isImage
+                        ? { type: "image_url", imageUrl: signedUrl.url }
+                        : { type: "document_url", documentUrl: signedUrl.url }
                 });
             } catch (error) {
                 console.error('Error processing OCR with Mistral:', error);
@@ -97,6 +100,7 @@ export class MistralOCRClient implements OCRClient {
                     error instanceof Error ? `OCR processing failed: ${error.message}` : 'OCR processing failed'
                 );
             }
+			// console.log(`ocrResponse: ${JSON.stringify(ocrResponse)}`);
 
             // Convert Mistral response to our common OCRResult format
             const result: OCRResult = {
@@ -104,7 +108,7 @@ export class MistralOCRClient implements OCRClient {
                 images: ocrResponse.pages?.flatMap(page =>
                     page.images.map(img => ({
                         id: img.id,
-                        name: `image_${img.id}`,
+                        name: `${img.id}`,
                         base64_data: img.imageBase64 || ''
                     }))
                 ) || []

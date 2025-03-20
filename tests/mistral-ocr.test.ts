@@ -1,7 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
 
-import { initMistralOCRClient } from "../ai/mistral";
+import {
+	initMistralOCRClient,
+	MistralOCRClient,
+} from "../ai/mistral";
 
 // For the test to work, you should place test files in the assets directory
 // and set your MISTRAL_API_KEY as an environment variable
@@ -43,22 +46,22 @@ describe('Mistral OCR Tests', () => {
         }
     });
 
-    it('should process all files in assets directory', async () => {
-        const files = fs.readdirSync(ASSETS_DIR)
-            .filter(file => {
-                const ext = path.extname(file).toLowerCase();
-                return ['.jpg', '.jpeg', '.png', '.pdf'].includes(ext);
-            });
+    const files = fs.readdirSync(ASSETS_DIR)
+        .filter(file => {
+            const ext = path.extname(file).toLowerCase();
+            return ['.jpg', '.jpeg', '.png', '.pdf'].includes(ext);
+        });
 
-        if (files.length === 0) {
-            console.warn('⚠️ No test files found in assets directory');
-            return;
-        }
+    if (files.length === 0) {
+        console.warn('⚠️ No test files found in assets directory');
+        return;
+    }
 
-        // Initialize the OCR client
-        const ocrClient = initMistralOCRClient(MISTRAL_API_KEY);
+    // Initialize the OCR client
+    const ocrClient = initMistralOCRClient(MISTRAL_API_KEY) as MistralOCRClient;
 
-        for (const file of files) {
+    for (const file of files) {
+        it(`should process file: ${file}`, async () => {
             const filePath = path.join(ASSETS_DIR, file);
             const fileBlob = await readFileAsBlob(filePath);
 
@@ -71,17 +74,24 @@ describe('Mistral OCR Tests', () => {
             expect(result.markdownContent.length).toBeGreaterThan(0);
 
             // Log results for manual inspection
-            console.log(`\n=== Results for ${file} ===`);
-            console.log(`Title: ${path.basename(file, path.extname(file))}`);
-            console.log(`Text length: ${result.markdownContent.length} characters`);
-            console.log('\nText preview:');
-            console.log(result.markdownContent.substring(0, 500) + (result.markdownContent.length > 500 ? '...' : ''));
+            console.log(`
+=== Results for ${file} ===
+Title: ${path.basename(file, path.extname(file))}
+Text length: ${result.markdownContent.length} characters
+
+Text preview:
+${result.markdownContent.substring(0, 500) + (result.markdownContent.length > 500 ? '...' : '')}`);
 
             if (result.images && result.images.length > 0) {
                 console.log(`\nTotal images: ${result.images.length}`);
+                for (const image of result.images) {
+                    expect(typeof image.base64_data).toBe('string');
+                    expect(image.base64_data.length).toBeGreaterThan(0);
+                    // console.log(`Image: id=${image.id} name=${image.name} base64_data=${image.base64_data}`);
+                }
             }
-        }
-    });
+        });
+    }
 });
 
 /**
