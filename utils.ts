@@ -3,8 +3,7 @@ import {
 	TFile,
 	Vault,
 } from "obsidian";
-
-import { AiOcrPluginSettings } from "./settings";
+import { OCRResult } from "types";
 
 /**
  * Creates a new markdown file with OCR results
@@ -13,8 +12,8 @@ import { AiOcrPluginSettings } from "./settings";
  * @param suggestedTitle Suggested title for the file
  * @param title Optional user-provided title
  */
-export async function createMarkdownFile(vault: Vault, content: string, suggestedTitle: string, title?: string): Promise<TFile> {
-	const fileName = sanitizeFilename(title || suggestedTitle);
+export async function createMarkdownFile(vault: Vault, title: string, content: string): Promise<TFile> {
+	const fileName = sanitizeFilename(title);
 	const filePath = `${fileName}.md`;
 
 	// Check if file exists and create with unique name if needed
@@ -53,67 +52,60 @@ export async function getUniqueFilePath(vault: Vault, filePath: string): Promise
 	return newPath;
 }
 
-/**
- * Processes base64 images in markdown content
- * @param vault Obsidian vault to save images to
- * @param settings Plugin settings
- * @param content Markdown content with base64 images
- * @param baseName Base name for image files
- * @returns Processed markdown content
- */
-export async function processBase64Images(
-	vault: Vault,
-	settings: AiOcrPluginSettings,
-	content: string,
-	baseName: string
-): Promise<string> {
-	if (!settings.saveBase64AsAttachment) {
-		return content; // Keep base64 data URLs as is
+export async function createImagesFromOcrResult(vault: Vault, ocrResult: OCRResult, dirPath: string): Promise<[string, string][]> {
+	const namePathPairs: [string, string][] = [];
+	for (const image of ocrResult.images) {
+		if (image.base64_data && image.base64_data.length > 0) {
+			const imagePath = `${dirPath}/${image.name}`;
+			await createImageFromBase64(vault, imagePath, image.base64_data);
+			namePathPairs.push([image.name, imagePath]);
+		}
 	}
+	return namePathPairs;
+}
 
-	let processedContent = content;
-	const base64Regex = /!\[.*?\]\(data:image\/[a-zA-Z]+;base64,([^)]+)\)/g;
-	let match;
-	let counter = 0;
-
-	const attachmentFolderPath = settings.attachmentFolder;
-
-	// Ensure the attachment folder exists
-	if (!(await vault.adapter.exists(attachmentFolderPath))) {
-		await vault.createFolder(attachmentFolderPath);
+export async function createImageFromBase64(vault: Vault, path: string, base64Data: string) {
+	let base64 = base64Data;
+	if (base64Data.startsWith('data:')) {
+		base64 = base64Data.split(',')[1];
 	}
-
-	while ((match = base64Regex.exec(content)) !== null) {
-		const fullMatch = match[0];
-		const base64Data = match[1];
-
-		// Create image from base64
-		const imageData = base64ToArrayBuffer(base64Data);
-		const imageName = `${baseName}-image-${counter}.png`;
-		const imagePath = `${attachmentFolderPath}/${imageName}`;
-
-		await vault.createBinary(imagePath, imageData);
-
-		// Replace base64 data URL with reference to saved image
-		processedContent = processedContent.replace(
-			fullMatch,
-			`![](${imagePath})`
-		);
-
-		counter++;
-	}
-
-	return processedContent;
+	const file = await vault.createBinary(path, base64ToArrayBuffer(base64));
+	return file;
 }
 
 /**
  * Converts base64 string to array buffer
  */
 export function base64ToArrayBuffer(base64: string): ArrayBuffer {
-	const binaryString = window.atob(base64);
+	const binaryString = atob(base64);
 	const bytes = new Uint8Array(binaryString.length);
 	for (let i = 0; i < binaryString.length; i++) {
 		bytes[i] = binaryString.charCodeAt(i);
 	}
 	return bytes.buffer;
+}
+
+/**
+ * Extracts title from markdown content by finding the first h1 or h2
+ * @param markdown The markdown content to extract title from
+ * @returns Suggested title from first h1 or h2, or null if none found
+ */
+export function suggestTitleFromMarkdown(markdown: string): string | null {
+	// Look for heading level 1 (# Title)
+	const h1Match = markdown.match(/^#\s+(.+?)(?:\n|$)/m);
+	if (h1Match && h1Match[1]) {
+		return h1Match[1].trim();
+	}
+
+	// If no h1, look for heading level 2 (## Title)
+	const h2Match = markdown.match(/^##\s+(.+?)(?:\n|$)/m);
+	if (h2Match && h2Match[1]) {
+		return h2Match[1].trim();
+	}
+
+	return null;
+}
+
+export function replaceImagePath(markdown: string, pathBefore: string, pathAfter: string) {
+	return markdown.replace(new RegExp(`!\\[.*\\](${pathBefore})`, 'g'), `![${pathBefore}](${pathAfter})`);
 }

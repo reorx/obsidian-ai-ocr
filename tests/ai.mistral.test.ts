@@ -8,8 +8,12 @@ import {
 
 // For the test to work, you should place test files in the assets directory
 // and set your MISTRAL_API_KEY as an environment variable
+if (!process.env.MISTRAL_API_KEY) {
+    console.warn('⚠️ MISTRAL_API_KEY environment variable is not set. Tests may fail.');
+}
 
 const ASSETS_DIR = path.join(__dirname, 'assets');
+
 
 /**
  * Utility function to read a file as blob for testing
