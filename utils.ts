@@ -1,9 +1,62 @@
 import {
 	Notice,
 	TFile,
+	TFolder,
 	Vault,
 } from "obsidian";
 import { OCRResult } from "types";
+
+export const DEBUG = !(process.env.BUILD_ENV === 'production')
+if (DEBUG) console.log('DEBUG is enabled')
+
+export function debugLog(...args: any[]) {
+	if (DEBUG) {
+		console.log((new Date()).toISOString().slice(11, 23), ...args)
+	}
+}
+
+export const path = {
+	// Credit: @creationix/path.js
+	join(...partSegments: string[]): string {
+		// Split the inputs into a list of path commands.
+		let parts: string[] = []
+		for (let i = 0, l = partSegments.length; i < l; i++) {
+			parts = parts.concat(partSegments[i].split('/'))
+		}
+		// Interpret the path commands to get the new resolved path.
+		const newParts = []
+		for (let i = 0, l = parts.length; i < l; i++) {
+			const part = parts[i]
+			// Remove leading and trailing slashes
+			// Also remove "." segments
+			if (!part || part === '.') continue
+			// Push new path segments.
+			else newParts.push(part)
+		}
+		// Preserve the initial slash if there was one.
+		if (parts[0] === '') newParts.unshift('')
+		// Turn back into a single string path.
+		return newParts.join('/')
+	},
+
+	// returns the last part of a path, e.g. 'foo.jpg'
+	basename(fullpath: string): string {
+		const sp = fullpath.split('/')
+		return sp[sp.length - 1]
+	},
+
+	// return extension without dot, e.g. 'jpg'
+	extension(fullpath: string): string {
+		const positions = [...fullpath.matchAll(new RegExp('\\.', 'gi'))].map(a => a.index)
+		return fullpath.slice(positions[positions.length - 1] + 1)
+	},
+}
+
+// ref: https://stackoverflow.com/a/6969486/596206
+export function escapeRegExp(s: string) {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 
 /**
  * Creates a new markdown file with OCR results
@@ -12,15 +65,17 @@ import { OCRResult } from "types";
  * @param suggestedTitle Suggested title for the file
  * @param title Optional user-provided title
  */
-export async function createMarkdownFile(vault: Vault, title: string, content: string): Promise<TFile> {
+export async function createMarkdownFile(vault: Vault, dir: TFolder, title: string, content: string): Promise<TFile> {
 	const fileName = sanitizeFilename(title);
-	const filePath = `${fileName}.md`;
+	const fileNameAndExt = `${fileName}.md`;
+	const preFilePath = path.join(dir.path, fileNameAndExt);
 
 	// Check if file exists and create with unique name if needed
-	const uniqueFilePath = await getUniqueFilePath(vault, filePath);
+	const filePath = await getUniqueFilePath(vault, preFilePath);
 
 	// Create the file
-	const file = await vault.create(uniqueFilePath, content);
+	console.log(`Creating file: ${filePath}`);
+	const file = await vault.create(filePath, content);
 	new Notice(`Created file: ${file.path}`);
 	return file;
 }
@@ -52,9 +107,74 @@ export async function getUniqueFilePath(vault: Vault, filePath: string): Promise
 	return newPath;
 }
 
-export async function createImagesFromOcrResult(vault: Vault, ocrResult: OCRResult, dirPath: string): Promise<[string, string][]> {
+export interface NameObj {
+	name: string
+	stem: string
+	extension: string
+}
+
+
+export async function deduplicateNewName(vault: Vault, newName: string, dir: string): Promise<NameObj> {
+	// list files in dir
+	const listed = await vault.adapter.list(dir)
+	debugLog('sibling files', listed)
+
+	// parse newName
+	const newNameExt = path.extension(newName),
+		newNameStem = newName.slice(0, newName.length - newNameExt.length - 1),
+		newNameStemEscaped = escapeRegExp(newNameStem),
+		delimiter = this.settings.dupNumberDelimiter,
+		delimiterEscaped = escapeRegExp(delimiter)
+
+	let dupNameRegex
+	if (this.settings.dupNumberAtStart) {
+		dupNameRegex = new RegExp(
+			`^(?<number>\\d+)${delimiterEscaped}(?<name>${newNameStemEscaped})\\.${newNameExt}$`)
+	} else {
+		dupNameRegex = new RegExp(
+			`^(?<name>${newNameStemEscaped})${delimiterEscaped}(?<number>\\d+)\\.${newNameExt}$`)
+	}
+	debugLog('dupNameRegex', dupNameRegex)
+
+	const dupNameNumbers: number[] = []
+	let isNewNameExist = false
+	for (let sibling of listed.files) {
+		sibling = path.basename(sibling)
+		if (sibling == newName) {
+			isNewNameExist = true
+			continue
+		}
+
+		// match dupNames
+		const m = dupNameRegex.exec(sibling)
+		if (!m) continue
+		// parse int for m.groups.number
+		dupNameNumbers.push(parseInt(m.groups.number))
+	}
+
+	if (isNewNameExist || this.settings.dupNumberAlways) {
+		// get max number
+		const newNumber = dupNameNumbers.length > 0 ? Math.max(...dupNameNumbers) + 1 : 1
+		// change newName
+		if (this.settings.dupNumberAtStart) {
+			newName = `${newNumber}${delimiter}${newNameStem}.${newNameExt}`
+		} else {
+			newName = `${newNameStem}${delimiter}${newNumber}.${newNameExt}`
+		}
+	}
+
+	return {
+		name: newName,
+		stem: newName.slice(0, newName.length - newNameExt.length - 1),
+		extension: newNameExt,
+	}
+}
+
+
+export async function createImagesFromOcrResult(vault: Vault, markdownFile: TFile, ocrResult: OCRResult, dirPath: string): Promise<[string, string][]> {
 	const namePathPairs: [string, string][] = [];
 	for (const image of ocrResult.images) {
+		console.log('creating image', image.name)
 		if (image.base64_data && image.base64_data.length > 0) {
 			const imagePath = `${dirPath}/${image.name}`;
 			await createImageFromBase64(vault, imagePath, image.base64_data);
@@ -107,5 +227,5 @@ export function suggestTitleFromMarkdown(markdown: string): string | null {
 }
 
 export function replaceImagePath(markdown: string, pathBefore: string, pathAfter: string) {
-	return markdown.replace(new RegExp(`!\\[.*\\](${pathBefore})`, 'g'), `![${pathBefore}](${pathAfter})`);
+	return markdown.replace(new RegExp(`!\\[(.*?)\\]\\(${pathBefore}\\)`, 'g'), `![${pathBefore}](${pathAfter})`);
 }

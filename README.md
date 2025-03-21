@@ -67,3 +67,9 @@ The OCR service preserves images in base64 format. Depending on your settings, t
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## TODO
+
+- [ ] support cloudflare workers ai [markdown conversion](https://developers.cloudflare.com/changelog/2025-03-20-markdown-conversion/)
+- [ ] support unstructured [partitioning API](https://docs.unstructured.io/open-source/core-functionality/partitioning)
+- ~~support markitdown~~ markitdown does not support partitioning images in PDF and images

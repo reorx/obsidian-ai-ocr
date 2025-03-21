@@ -7,7 +7,10 @@ import {
 	jest,
 } from "@jest/globals";
 
-import { createImageFromBase64 } from "../utils";
+import {
+	createImageFromBase64,
+	replaceImagePath,
+} from "../utils";
 
 // Mock the Obsidian types we need
 jest.mock('obsidian', () => {
@@ -68,6 +71,32 @@ describe('Utils Tests', () => {
 
             // Verify the result is as expected
             expect(result).toBe(mockFile);
+        });
+    });
+
+    describe('replaceImagePath', () => {
+        it('should replace image paths in markdown', () => {
+            const markdown = 'This is a test ![image](old_path.png) with an image';
+            const result = replaceImagePath(markdown, 'old_path.png', 'foo/bar/new_path.png');
+            expect(result).toBe('This is a test ![old_path.png](foo/bar/new_path.png) with an image');
+        });
+
+        it('should replace multiple instances of the same image path', () => {
+            const markdown = 'Image 1: ![alt text](image.png) and Image 2: ![another alt](image.png)';
+            const result = replaceImagePath(markdown, 'image.png', 'new/path/image.png');
+            expect(result).toBe('Image 1: ![image.png](new/path/image.png) and Image 2: ![image.png](new/path/image.png)');
+        });
+
+        it('should not replace text that is not an image markdown syntax', () => {
+            const markdown = 'This is text with (path.png) but not an image';
+            const result = replaceImagePath(markdown, 'path.png', 'new.png');
+            expect(result).toBe('This is text with (path.png) but not an image');
+        });
+
+        it('should handle empty alt text', () => {
+            const markdown = 'Empty alt: ![](image.png)';
+            const result = replaceImagePath(markdown, 'image.png', 'new/image.png');
+            expect(result).toBe('Empty alt: ![image.png](new/image.png)');
         });
     });
 });

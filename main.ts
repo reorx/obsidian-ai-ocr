@@ -12,10 +12,7 @@ import {
 	suggestTitleFromMarkdown,
 } from "utils";
 
-import {
-	initMistralOCRClient,
-	MistralApiError,
-} from "./ai/mistral";
+import { initMistralOCRClient } from "./ai/mistral";
 import {
 	AiOcrPluginSettings,
 	AiOcrSettingTab,
@@ -151,24 +148,24 @@ export class AiOcrModal extends Modal {
 		const reader = new FileReader();
 
 		reader.onload = async (e) => {
-			try {
+			// try {
 				await this.processSelectedFile(reader, file, options);
 				// Close the modal
 				this.close();
-			} catch (error) {
-				console.error('Error processing OCR result:', error);
+			// } catch (error) {
+			// 	console.error('Error processing OCR result:', error);
 
-				// Display appropriate error message based on the type of error
-				if (error instanceof MistralApiError) {
-					if (error.status) {
-						new Notice(`API Error: ${error.status} ${error.statusText}`);
-					} else {
-						new Notice(error.message);
-					}
-				} else {
-					new Notice('Error processing OCR result. Check console for details.');
-				}
-			}
+			// 	// Display appropriate error message based on the type of error
+			// 	if (error instanceof MistralApiError) {
+			// 		if (error.status) {
+			// 			new Notice(`API Error: ${error.status} ${error.statusText}`);
+			// 		} else {
+			// 			new Notice(error.message);
+			// 		}
+			// 	} else {
+			// 		new Notice('Error processing OCR result. Check console for details.');
+			// 	}
+			// }
 		};
 
 		reader.onerror = () => {
@@ -203,6 +200,7 @@ export class AiOcrModal extends Modal {
 
 		// Process the file with OCR
 		const ocrResult = await ocrClient.processFile(filePath, fileBlob);
+		console.log('ocrResult', ocrResult);
 
 		// Extract markdown content
 		let markdownContent = ocrResult.markdownContent;
@@ -211,8 +209,16 @@ export class AiOcrModal extends Modal {
 		const titleFromContent = suggestTitleFromMarkdown(markdownContent);
 		const suggestedTitle = titleFromContent || 'OCR Result of ' + sanitizeFilename(file.name);
 
+		// Create the markdown file
+		const newFile = await createMarkdownFile(
+			this.app.vault,
+			this.app.vault.getRoot(),
+			suggestedTitle,
+			markdownContent,
+		);
+
 		// create images
-		const imageNamePathPairs = await createImagesFromOcrResult(this.app.vault, ocrResult, 'attachments');
+		const imageNamePathPairs = await createImagesFromOcrResult(this.app.vault, newFile, ocrResult, 'attachments');
 
 		// replace images paths in markdown content
 		for (const [name, path] of imageNamePathPairs) {
@@ -220,12 +226,8 @@ export class AiOcrModal extends Modal {
 			markdownContent = replaceImagePath(markdownContent, name, path);
 		}
 
-		// Create the markdown file
-		const newFile = await createMarkdownFile(
-			this.app.vault,
-			suggestedTitle,
-			markdownContent,
-		);
+		// replace markdown content in file
+		// TODO
 
 		// Open the created file
 		this.app.workspace.getLeaf().openFile(newFile);
